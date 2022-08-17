@@ -242,7 +242,7 @@ if opt.hint:
     from hint_learning import train, language_model_select
 
     'Import the language/teacher model.'
-    model_t = language_model_select(model, opt.device, primer='a photo of a {}')
+    model_t = language_model_select(opt.language_model, opt.device, primer='a photo of a {}')
 
     opt.epoch = 0
     epochs = range(opt.epoch, opt.hint_epochs)
