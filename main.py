@@ -234,6 +234,22 @@ if opt.language_distill_w:
     torch.cuda.empty_cache()
 
 ### ---------------------------------------------------------------
+#### Training For Hint Learning.
+if opt.hint:
+    print('\n' + termcolor.colored('-----', 'red', attrs=['bold']) + '\n')
+
+    from hint_learning import train, language_model_select
+
+    'Import the language/teacher model.'
+    model_t = language_model_select(model, opt.device, primer='a photo of a {}')
+
+    opt.epoch = 0
+    epochs = range(opt.epoch, opt.hint_epochs)
+    for epoch in epochs:
+        train_acc, train_loss = train(epoch, dataloaders['training'], model, model_t, optimizer, opt)
+
+
+### ---------------------------------------------------------------
 #### Main training.
 print('\n' + termcolor.colored('-----', 'red', attrs=['bold']) + '\n')
 

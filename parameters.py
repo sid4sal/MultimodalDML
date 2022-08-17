@@ -242,3 +242,15 @@ def batch_creation_parameters(parser):
     parser.add_argument('--samples_per_class', default=2, type=int,
                         help='Number of samples in one class drawn before choosing the next class. Set to >1 for losses other than ProxyNCA.')
     return parser
+
+def hint_learning_parameters(parser):
+    """
+    Parameters for Hint Learning.
+    """
+    parser.add_argument('--hint', action='store_true',
+                        help='Flag. If set, uses Hint Learning.')
+    parser.add_argument('--hint_epochs', default=100, type=int,
+                        help='Number of training epochs for hint learning.')
+    parser.add_argument('--hint_layer', default=2, type=int, choices=[0, 1, 2, 3],
+                        help='Number of layer that will be used as guide and hint layers.')
+    return parser
