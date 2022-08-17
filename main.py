@@ -33,6 +33,7 @@ parser = par.loss_specific_parameters(parser)
 parser = par.wandb_parameters(parser)
 ### Additional, non-default parameters.
 parser = par.language_guidance_parameters(parser)
+parser = par.hint_learning_parameters(parser)
 opt = parser.parse_args()
 
 ### ---------------------------------------------------------------
