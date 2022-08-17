@@ -247,7 +247,7 @@ if opt.hint:
     opt.epoch = 0
     epochs = range(opt.epoch, opt.hint_epochs)
     for epoch in epochs:
-        train_acc, train_loss = train(epoch, dataloaders['training'], model, model_t, optimizer, opt)
+        train_acc, train_loss = train(epoch, dataloaders, model, model_t, optimizer, opt)
 
 
 ### ---------------------------------------------------------------

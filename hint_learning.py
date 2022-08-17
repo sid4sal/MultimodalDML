@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
 import time
+import pretrainedmodels as ptm
 
 
 class AverageMeter(object):
@@ -41,7 +42,7 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 
-def train(epoch, train_loader, model, model_t, optimizer, opt):
+def train(epoch, dataloaders, model, model_t, optimizer, opt):
     model_t.eval()
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -49,16 +50,18 @@ def train(epoch, train_loader, model, model_t, optimizer, opt):
     top1 = AverageMeter()
     top5 = AverageMeter()
     end = time.time()
-    for idx, data in enumerate(train_loader):
-        input, target, index = data
+    for idx, data in enumerate(dataloaders['training']):
+        input = data[1]['image']
+        target = data[0]
         data_time.update(time.time() - end)
         input = input.float()
         input = input.cuda()
         target = target.cuda()
-        index = index.cuda()
-        feat_s, logit_s = model(input, is_feat=True, preact=False)
+        feat_s = model(input, device=opt.device)
+        input2 = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
+                                            ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
         with torch.no_grad():
-            feat_t, logit_t = model_t(input, is_feat=True, preact=False)
+            feat_t = model_t(input2, device=opt.device)
             feat_t = [f.detach() for f in feat_t]
         regress_s = ConvReg(feat_s[opt.hint_layer].shape, feat_t[opt.hint_layer].shape)
 
@@ -66,10 +69,10 @@ def train(epoch, train_loader, model, model_t, optimizer, opt):
         f_t = feat_t[opt.hint_layer]
 
         loss=nn.MSELoss(f_s, f_t)
-        acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
+        #acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        top1.update(acc1[0], input.size(0))
-        top5.update(acc5[0], input.size(0))
+        #top1.update(acc1[0], input.size(0))
+        #top5.update(acc5[0], input.size(0))
 
         optimizer.zero_grad()
         loss.backward()
@@ -183,3 +186,165 @@ class BertLanguageModel(torch.nn.Module):
                                        truncation=True).to(device)
         language_embeds = self.model(**primed_tokens).pooler_output
         return language_embeds.type(torch.float32)
+
+
+def precompute_language_embeds(opt, language_model,
+                                   dataloader,
+                                   pseudoclass_generator=None):
+    if opt.language_pseudoclass:
+        classlevel_relabels, sample_relabels = relabel(
+            pseudoclass_generator,
+            dataloader,
+            opt.device,
+            topk=opt.language_pseudoclass_topk)
+
+        language_embeds = reembed_in_language(
+            language_model, classlevel_relabels,
+            sample_relabels, opt.device)
+
+        language_embeds = language_embeds.to(opt.device)
+        language_embeds = language_embeds.permute(1, 0, 2)
+        print('Retrieved {} language embeddings!'.format(
+            language_embeds.shape[0] * language_embeds.shape[1]))
+    else:
+        language_embeds = reembed_dict_in_language(
+            language_model, dataloader.dataset.language_conversion,
+            opt.device)
+        print('Retrieved {} language embeddings!'.format(
+            len(language_embeds)))
+    return language_embeds
+
+
+#############################################################################
+def adjust_text(input_text, maxlen=30):
+    text = ''
+    count = 0
+    for p, c in enumerate(input_text.split(' ')):
+        if p:
+            text += ' '
+        if count > maxlen and len(text) > 0:
+            text += '\n'
+            count -= maxlen
+        text += c
+        count += len(c)
+    return text
+
+
+def reembed_dict_in_language(language_model, label_dict, device):
+    print('Getting language embeddings...')
+
+    sorted_values = list(label_dict.values())
+    unique_labs = {key: None for key in np.unique(sorted_values)}
+
+    reembed_collect = []
+    with torch.no_grad():
+        language_embeds = language_model(list(unique_labs.keys()), device,
+                                         False).cpu()
+        unique_labs = {
+            key: language_embed
+            for key, language_embed in zip(unique_labs.keys(), language_embeds)
+        }
+
+    return {key: unique_labs[value] for key, value in label_dict.items()}
+
+
+def reembed_in_language(language_model, reassigns_topk, device):
+    print('Getting language embeddings...')
+    unique_labs = {key: None for key in np.unique(reassigns_topk)}
+    reembed_collect = []
+    _ = language_model.eval()
+    with torch.no_grad():
+        language_embeds = language_model(list(unique_labs.keys()), device,
+                                         False).cpu()
+        unique_labs = {
+            key: language_embed
+            for key, language_embed in zip(unique_labs.keys(), language_embeds)
+        }
+
+    def match(inp):
+        return [unique_labs[i] for i in inp]
+
+    reembed_collect = list(map(match, reassigns_topk))
+    return torch.stack([torch.stack(x) for x in reembed_collect])
+
+
+def relabel(model,
+            dataloader,
+            device,
+            datapath='',
+            full_label=False,
+            topk=5,
+            overlap=True):
+    was_training = model.training
+    _ = model.eval()
+
+    crop_size = dataloader.dataset.crop_size
+    base_size = dataloader.dataset.base_size
+    dataloader.dataset.crop_size = [299, 299]
+    dataloader.dataset.base_size = 320
+    dataloader.dataset.provide_transforms()
+
+    if overlap:
+        assert topk > 1, 'If you want label overlap, please set topk > 1!'
+
+    with open(datapath + 'imagenet_synsets.txt', 'r') as f:
+        imagenet_synsets = f.readlines()
+    imagenet_classes = [x.strip() for x in imagenet_synsets]
+    imagenet_splits = [line.split(' ') for line in imagenet_synsets]
+    key_to_classname = {
+        spl[0]: ' '.join(spl[1:]).replace('\n', '')
+        for spl in imagenet_splits
+    }
+
+    with open(datapath + 'imagenet_classes.txt', 'r') as f:
+        imagenet_classes = f.readlines()
+    abstract_imagenet_classes = [
+        x.strip().replace('\n', '') for x in imagenet_classes
+    ]
+    imagenet_classes = [key_to_classname[x] for x in abstract_imagenet_classes]
+
+    print('\n')
+    iterator = tqdm.tqdm(dataloader, 'Getting ImageNet pseudolabels...')
+    memory_collect = []
+    train_labels = []
+    class_embed_collect = {}
+    sample_reassign_topk = []
+
+    for i, data_input in enumerate(iterator):
+        with torch.no_grad():
+            input = data_input[1]['image']
+            out = model(input.to(device))
+        for idx, label in zip(out, data_input[0].cpu().detach().numpy()):
+            if label not in class_embed_collect:
+                class_embed_collect[label] = []
+            class_embed_collect[label].append(idx.detach().cpu().numpy())
+        train_labels.extend(data_input[0].cpu().detach().numpy().tolist())
+        sample_reassign_topk.extend(
+            np.array(imagenet_classes)[np.argsort(
+                out.detach().cpu().numpy(), axis=1)[:,
+                                                    -topk:][:, ::-1]].tolist())
+
+    class_collect_topk = {
+        key: np.argsort(np.stack(item, axis=0).mean(axis=0))[-topk:][::-1]
+        for key, item in class_embed_collect.items()
+    }
+
+    label_reassign_topk = [[] for _ in range(topk)]
+    for k in range(topk):
+        for label in np.unique(train_labels):
+            label_reassign_topk[k].append(
+                imagenet_classes[class_collect_topk[label][k]])
+    if not full_label:
+        label_reassign_topk = [[x.split(', ')[0] for x in y]
+                               for y in label_reassign_topk]
+        sample_reassign_topk = [[x.split(', ')[0] for x in y]
+                                for y in sample_reassign_topk]
+
+    if was_training:
+        _ = model.train()
+
+    dataloader.dataset.crop_size = crop_size
+    dataloader.dataset.base_size = base_size
+    dataloader.dataset.provide_transforms()
+
+    return label_reassign_topk, sample_reassign_topk
