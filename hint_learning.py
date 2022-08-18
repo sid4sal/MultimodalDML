@@ -42,7 +42,19 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 
+# placeholder for batch features
+features = {}    
+##### HELPER FUNCTION FOR FEATURE EXTRACTION
+def get_features(name):
+    def hook(model, input, output):
+        global features
+        features[name] = output.detach()
+    return hook   
+
 def train(epoch, dataloaders, model, model_t, optimizer, opt):
+    ##### REGISTER HOOK
+    model.global_pool.register_forward_hook(get_features('feat_s'))
+
     model_t.eval()
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -53,15 +65,20 @@ def train(epoch, dataloaders, model, model_t, optimizer, opt):
     for idx, data in enumerate(dataloaders['training']):
         input = data[1]['image']
         target = data[0]
+
         data_time.update(time.time() - end)
         input = input.float()
         input = input.cuda()
         target = target.cuda()
-        feat_s = model(input, device=opt.device)
-        input2 = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
+
+        logit_s = model(input, device=opt.device)
+        feat_s = features['feat_s']
+
+        input_t = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
                                             ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
+        
         with torch.no_grad():
-            feat_t = model_t(input2, device=opt.device)
+            feat_t = model_t(input_t, device=opt.device)
             feat_t = [f.detach() for f in feat_t]
         regress_s = ConvReg(feat_s[opt.hint_layer].shape, feat_t[opt.hint_layer].shape)
 
@@ -69,10 +86,10 @@ def train(epoch, dataloaders, model, model_t, optimizer, opt):
         f_t = feat_t[opt.hint_layer]
 
         loss=nn.MSELoss(f_s, f_t)
-        #acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
+        acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        #top1.update(acc1[0], input.size(0))
-        #top5.update(acc5[0], input.size(0))
+        top1.update(acc1[0], input.size(0))
+        top5.update(acc5[0], input.size(0))
 
         optimizer.zero_grad()
         loss.backward()
