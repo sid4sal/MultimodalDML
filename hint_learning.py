@@ -51,11 +51,11 @@ def get_features(name):
         features[name] = output.detach()
     return hook   
 
-def train(epoch, dataloaders, model, model_t, optimizer, opt):
+def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
     ##### REGISTER HOOK
-    model.global_pool.register_forward_hook(get_features('feat_s'))
+    model.model.maxpool.register_forward_hook(get_features('feat_s'))
 
-    model_t.eval()
+    #model_t.eval()
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -63,8 +63,9 @@ def train(epoch, dataloaders, model, model_t, optimizer, opt):
     top5 = AverageMeter()
     end = time.time()
     for idx, data in enumerate(dataloaders['training']):
-        input = data[1]['image']
-        target = data[0]
+        class_labels, input_dict, sample_indices = data
+        input = input_dict['image']
+        target = class_labels
 
         data_time.update(time.time() - end)
         input = input.float()
@@ -74,8 +75,7 @@ def train(epoch, dataloaders, model, model_t, optimizer, opt):
         logit_s = model(input, device=opt.device)
         feat_s = features['feat_s']
 
-        feat_t = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
-                                            ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
+        feat_t = language_embeds
         
         #with torch.no_grad():
         #    feat_t = model_t(input_t, device=opt.device)

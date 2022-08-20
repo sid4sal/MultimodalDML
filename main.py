@@ -239,15 +239,16 @@ if opt.language_distill_w:
 if opt.hint:
     print('\n' + termcolor.colored('-----', 'red', attrs=['bold']) + '\n')
 
-    from hint_learning import train, language_model_select
+    from hint_learning import train, language_model_select, precompute_language_embeds
 
     'Import the language/teacher model.'
     model_t = language_model_select(opt.language_model, opt.device, primer='a photo of a {}')
-
+    language_embeds = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
+                                            ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
     opt.epoch = 0
     epochs = range(opt.epoch, opt.hint_epochs)
     for epoch in epochs:
-        train_acc, train_loss = train(epoch, dataloaders, model, model_t, optimizer, opt)
+        train_acc, train_loss = train(epoch, dataloaders, model, language_embeds, optimizer, opt)
 
 
 ### ---------------------------------------------------------------
