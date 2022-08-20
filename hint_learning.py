@@ -64,7 +64,6 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
     ##### REGISTER HOOK
     model.model.maxpool.register_forward_hook(get_features('feat_s'))
 
-    #model_t.eval()
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -86,15 +85,11 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
 
         feat_t = get_embeds(language_embeds, class_labels)
         
-        #with torch.no_grad():
-        #    feat_t = model_t(input_t, device=opt.device)
-        #    feat_t = [f.detach() for f in feat_t]
         regress_s = ConvReg(feat_s[opt.hint_layer].shape, feat_t[opt.hint_layer].shape)
 
-        f_s = regress_s(feat_s[opt.hint_layer])
-        f_t = feat_t[opt.hint_layer]
+        f_s = regress_s(feat_s)
 
-        loss=nn.MSELoss(f_s, f_t)
+        loss=nn.MSELoss(f_s, feat_t)
         acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(acc1[0], input.size(0))
@@ -124,7 +119,7 @@ class ConvReg(nn.Module):
         elif s_H >= t_H:
             self.conv = nn.Conv2d(s_C, t_C, kernel_size=(1+s_H-t_H, 1+s_W-t_W))
         else:
-            raise NotImplemented('student size {}, teacher size {}'.format(s_H, t_H))
+            raise NotImplementedError('student size {}, teacher size {}'.format(s_H, t_H))
         self.bn = nn.BatchNorm2d(t_C)
         self.relu = nn.ReLU(inplace=True)
 
@@ -217,6 +212,7 @@ class BertLanguageModel(torch.nn.Module):
 def precompute_language_embeds(opt, language_model,
                                    dataloader,
                                    pseudoclass_generator=None):
+    language_model.model.transformer.resblocks[5].register_forward_hook(get_features('feat_t'))
     if opt.language_pseudoclass:
         classlevel_relabels, sample_relabels = relabel(
             pseudoclass_generator,
@@ -229,7 +225,7 @@ def precompute_language_embeds(opt, language_model,
             opt.device)
 
         language_embeds = language_embeds.to(opt.device)
-        language_embeds = language_embeds.permute(1, 0, 2)
+        language_embeds = language_embeds.permute(1, 0, 2, 3)
         print('Retrieved {} language embeddings!'.format(
             language_embeds.shape[0] * language_embeds.shape[1]))
         language_embeds = torch.mean(language_embeds, dim=1)
@@ -265,8 +261,9 @@ def reembed_dict_in_language(language_model, label_dict, device):
 
     reembed_collect = []
     with torch.no_grad():
-        language_embeds = language_model(list(unique_labs.keys()), device,
+        _ = language_model(list(unique_labs.keys()), device,
                                          False).cpu()
+        language_embeds = features['feat_t'].permute(1, 2, 0)
         unique_labs = {
             key: language_embed
             for key, language_embed in zip(unique_labs.keys(), language_embeds)
@@ -281,8 +278,9 @@ def reembed_in_language(language_model, reassigns_topk, device):
     reembed_collect = []
     _ = language_model.eval()
     with torch.no_grad():
-        language_embeds = language_model(list(unique_labs.keys()), device,
+        _ = language_model(list(unique_labs.keys()), device,
                                          False).cpu()
+        language_embeds = features['feat_t'].permute(1, 2, 0)
         unique_labs = {
             key: language_embed
             for key, language_embed in zip(unique_labs.keys(), language_embeds)
