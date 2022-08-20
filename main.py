@@ -240,11 +240,16 @@ if opt.hint:
     print('\n' + termcolor.colored('-----', 'red', attrs=['bold']) + '\n')
 
     from hint_learning import train, language_model_select, precompute_language_embeds
+    import pretrainedmodels as ptm
 
     'Import the language/teacher model.'
     model_t = language_model_select(opt.language_model, opt.device, primer='a photo of a {}')
+    
     language_embeds = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
                                             ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
+    if not isinstance(language_embeds, dict):
+        language_embeds = torch.mean(language_embeds, dim=1)
+
     opt.epoch = 0
     epochs = range(opt.epoch, opt.hint_epochs)
     for epoch in epochs:

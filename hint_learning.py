@@ -41,6 +41,15 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
+def get_embeds(language_embeds, labels):
+    if isinstance(language_embeds, dict):
+        language_embeds2 = torch.stack([
+            language_embeds[idx]
+            for idx in labels.detach().cpu().numpy()
+        ])
+    else:
+        language_embeds2 = language_embeds[labels]
+    return language_embeds2
 
 # placeholder for batch features
 features = {}    
@@ -75,7 +84,7 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
         logit_s = model(input, device=opt.device)
         feat_s = features['feat_s']
 
-        feat_t = language_embeds
+        feat_t = get_embeds(language_embeds, class_labels)
         
         #with torch.no_grad():
         #    feat_t = model_t(input_t, device=opt.device)
@@ -217,12 +226,13 @@ def precompute_language_embeds(opt, language_model,
 
         language_embeds = reembed_in_language(
             language_model, classlevel_relabels,
-            sample_relabels, opt.device)
+            opt.device)
 
         language_embeds = language_embeds.to(opt.device)
         language_embeds = language_embeds.permute(1, 0, 2)
         print('Retrieved {} language embeddings!'.format(
             language_embeds.shape[0] * language_embeds.shape[1]))
+        language_embeds = torch.mean(language_embeds, dim=1)
     else:
         language_embeds = reembed_dict_in_language(
             language_model, dataloader.dataset.language_conversion,
