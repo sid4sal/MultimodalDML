@@ -74,12 +74,12 @@ def train(epoch, dataloaders, model, model_t, optimizer, opt):
         logit_s = model(input, device=opt.device)
         feat_s = features['feat_s']
 
-        input_t = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
+        feat_t = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
                                             ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
         
-        with torch.no_grad():
-            feat_t = model_t(input_t, device=opt.device)
-            feat_t = [f.detach() for f in feat_t]
+        #with torch.no_grad():
+        #    feat_t = model_t(input_t, device=opt.device)
+        #    feat_t = [f.detach() for f in feat_t]
         regress_s = ConvReg(feat_s[opt.hint_layer].shape, feat_t[opt.hint_layer].shape)
 
         f_s = regress_s(feat_s[opt.hint_layer])
