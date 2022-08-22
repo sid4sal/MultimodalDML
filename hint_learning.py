@@ -85,7 +85,7 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
 
         feat_t = get_embeds(language_embeds, class_labels)
         
-        regress_s = ConvReg(feat_s[opt.hint_layer].shape, feat_t[opt.hint_layer].shape)
+        regress_s = ConvReg(feat_s.shape, feat_t.shape)
 
         f_s = regress_s(feat_s)
 
@@ -228,7 +228,7 @@ def precompute_language_embeds(opt, language_model,
         language_embeds = language_embeds.permute(1, 0, 2, 3)
         print('Retrieved {} language embeddings!'.format(
             language_embeds.shape[0] * language_embeds.shape[1]))
-        language_embeds = torch.mean(language_embeds, dim=1)
+        #language_embeds = torch.mean(language_embeds, dim=1)
     else:
         language_embeds = reembed_dict_in_language(
             language_model, dataloader.dataset.language_conversion,
