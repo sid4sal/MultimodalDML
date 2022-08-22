@@ -62,7 +62,7 @@ def get_features(name):
 
 def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
     ##### REGISTER HOOK
-    model.model.maxpool.register_forward_hook(get_features('feat_s'))
+    model.model.layer_blocks[1].register_forward_hook(get_features('feat_s'))
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -228,7 +228,6 @@ def precompute_language_embeds(opt, language_model,
         language_embeds = language_embeds.permute(1, 0, 2, 3)
         print('Retrieved {} language embeddings!'.format(
             language_embeds.shape[0] * language_embeds.shape[1]))
-        #language_embeds = torch.mean(language_embeds, dim=1)
     else:
         language_embeds = reembed_dict_in_language(
             language_model, dataloader.dataset.language_conversion,
