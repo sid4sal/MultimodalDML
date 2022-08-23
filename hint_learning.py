@@ -50,7 +50,7 @@ def get_embeds(language_embeds, labels):
         language_embeds2 = torch.mean(language_embeds2, dim=2)
     else:
         language_embeds2 = language_embeds[labels]
-    return language_embeds2
+    return language_embeds2.type(torch.float32)
 
 # placeholder for batch features
 features = {}    
@@ -67,19 +67,19 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+    #losses = AverageMeter()
+    #top1 = AverageMeter()
+    #top5 = AverageMeter()
     end = time.time()
     for idx, data in enumerate(dataloaders['training']):
         class_labels, input_dict, sample_indices = data
         input = input_dict['image']
-        target = class_labels
+        #target = class_labels
 
         data_time.update(time.time() - end)
         input = input.float()
         input = input.cuda()
-        target = target.cuda()
+        #target = target.cuda()
 
         out_dict = model(input, device=opt.device)
         feat_s = out_dict['mid_layer']
@@ -91,12 +91,12 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
 
         f_s = regress_s(feat_s)
 
-        loss=nn.MSELoss()
-        loss(f_s, feat_t)
-        acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
-        losses.update(loss.item(), input.size(0))
-        top1.update(acc1[0], input.size(0))
-        top5.update(acc5[0], input.size(0))
+        criterion = nn.MSELoss()
+        loss = criterion(f_s, feat_t)
+        #acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
+        #losses.update(loss.item(), input.size(0))
+        #top1.update(acc1[0], input.size(0))
+        #top5.update(acc5[0], input.size(0))
 
         optimizer.zero_grad()
         loss.backward()
@@ -105,7 +105,7 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
         batch_time.update(time.time() - end)
         end = time.time()
 
-    return top1.avg, losses.avg
+    #return top1.avg, losses.avg
 
 
 class Regress(nn.Module):
