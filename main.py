@@ -249,7 +249,7 @@ if opt.hint:
                                             ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
     if not isinstance(language_embeds, dict):
         language_embeds = torch.mean(language_embeds, dim=1)
-    language_embeds = torch.mean(language_embeds, dim=2)
+        language_embeds = torch.mean(language_embeds, dim=2)
 
     opt.epoch = 0
     epochs = range(opt.epoch, opt.hint_epochs)

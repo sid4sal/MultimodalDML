@@ -47,6 +47,7 @@ def get_embeds(language_embeds, labels):
             language_embeds[idx]
             for idx in labels.detach().cpu().numpy()
         ])
+        language_embeds2 = torch.mean(language_embeds2, dim=2)
     else:
         language_embeds2 = language_embeds[labels]
     return language_embeds2
@@ -62,7 +63,7 @@ def get_features(name):
 
 def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
     ##### REGISTER HOOK
-    model.model.layer_blocks[1].register_forward_hook(get_features('feat_s'))
+    model.layer_blocks[1].register_forward_hook(get_features('feat_s'))
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -85,7 +86,7 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
 
         feat_t = get_embeds(language_embeds, class_labels)
         
-        regress_s = ConvReg(feat_s.shape, feat_t.shape)
+        regress_s = Regress(512*28*28,512).cuda()
 
         f_s = regress_s(feat_s)
 
@@ -104,6 +105,19 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
 
     return top1.avg, losses.avg
 
+
+class Regress(nn.Module):
+    """Simple Linear Regression for hints"""
+    def __init__(self, dim_in=1024, dim_out=1024):
+        super(Regress, self).__init__()
+        self.linear = nn.Linear(dim_in, dim_out)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        x = self.linear(x)
+        x = self.relu(x)
+        return x
 
 class ConvReg(nn.Module):
     """Convolutional regression for FitNet"""
