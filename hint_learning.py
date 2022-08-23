@@ -90,7 +90,8 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
 
         f_s = regress_s(feat_s)
 
-        loss=nn.MSELoss(f_s, feat_t)
+        loss=nn.MSELoss()
+        loss(f_s, feat_t)
         acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(acc1[0], input.size(0))
