@@ -39,10 +39,13 @@ class Network(torch.nn.Module):
     def forward(self, x, warmup=False, **kwargs):
         context = torch.no_grad() if warmup else contextlib.nullcontext()
         with context:
+            mid_layer = None
             x = self.model.maxpool(
                 self.model.relu(self.model.bn1(self.model.conv1(x))))
             for i, layerblock in enumerate(self.layer_blocks):
                 x = layerblock(x)
+                if i == 1:
+                    mid_layer = x
             prepool_y = x
             if self.pool_aux is not None:
                 y = self.pool_aux(x) + self.pool_base(x)
@@ -59,5 +62,6 @@ class Network(torch.nn.Module):
             'embeds': z,
             'avg_features': y,
             'features': x,
-            'extra_embeds': prepool_y
+            'extra_embeds': prepool_y,
+            'mid_layer' : mid_layer
         }

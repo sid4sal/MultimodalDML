@@ -63,7 +63,7 @@ def get_features(name):
 
 def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
     ##### REGISTER HOOK
-    model.layer_blocks[1].register_forward_hook(get_features('feat_s'))
+    #model.layer_blocks[1].register_forward_hook(get_features('feat_s'))
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -81,8 +81,9 @@ def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
         input = input.cuda()
         target = target.cuda()
 
-        logit_s = model(input, device=opt.device)
-        feat_s = features['feat_s']
+        out_dict = model(input, device=opt.device)
+        feat_s = out_dict['mid_layer']
+        #feat_s = features['feat_s']
 
         feat_t = get_embeds(language_embeds, class_labels)
         
