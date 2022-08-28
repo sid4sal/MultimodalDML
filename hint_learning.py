@@ -57,9 +57,9 @@ class Hint(torch.nn.Module):
                 self.language_embeds.shappe[0]))
 
     def train(self, epoch,
-              dataloaders, model,
+              data_iterator, model,
               optimizer):
-        for idx, data in enumerate(dataloaders['training']):
+        for idx, data in enumerate(data_iterator):
             class_labels, input_dict, sample_indices = data
             input = input_dict['image'].to(self.device)
 
@@ -74,6 +74,8 @@ class Hint(torch.nn.Module):
 
             criterion = nn.MSELoss()
             loss = criterion(f_s, feat_t)
+
+            data_iterator.set_postfix_str('Hint Loss: {0:.4f}'.format(loss))
 
             optimizer.zero_grad()
             loss.backward()
