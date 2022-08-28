@@ -256,7 +256,7 @@ if opt.hint:
         hint.language_embeds = torch.mean(hint.language_embeds, dim=1)
     hint.language_embeds = torch.mean(hint.language_embeds, dim=2)
 
-    del language_guide.language_model
+    del hint.language_model
     torch.cuda.empty_cache()
 
 # Training.
@@ -276,7 +276,8 @@ if opt.hint:
         # Train one epoch
         data_iterator = tqdm(dataloaders['training'],
                             desc='Epoch {} Training...'.format(epoch))
-        hint.train(epoch, data_iterator, model, optimizer)
+        hint.train(epoch, data_iterator, model, optimizer, scaler, opt.device)
+        torch.cuda.empty_cache()
 
 ### ---------------------------------------------------------------
 #### Main training.

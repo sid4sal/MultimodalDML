@@ -54,21 +54,22 @@ class Hint(torch.nn.Module):
                 device)
             self.language_embeds = self.language_embeds.to(device)
             print('Retrieved {} language embeddings!'.format(
-                self.language_embeds.shappe[0]))
+                self.language_embeds.shape[0]))
 
     def train(self, epoch,
               data_iterator, model,
-              optimizer):
+              optimizer, scaler, device):
         for idx, data in enumerate(data_iterator):
+            optimizer.zero_grad(set_to_none=True)
             class_labels, input_dict, sample_indices = data
-            input = input_dict['image'].to(self.device)
+            input = input_dict['image'].to(device)
 
-            out_dict = model(input, device=self.device)
+            out_dict = model(input, device=device)
             feat_s = out_dict['mid_layer']
 
             feat_t = self.language_embeds[class_labels].type(torch.float32)
             
-            regress_s = Regress(feat_s.size,feat_t.size).to(self.device)
+            regress_s = Regress(feat_s.shape,feat_t.shape).to(device)
 
             f_s = regress_s(feat_s)
 
@@ -77,9 +78,9 @@ class Hint(torch.nn.Module):
 
             data_iterator.set_postfix_str('Hint Loss: {0:.4f}'.format(loss))
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
 
 # placeholder for batch features
