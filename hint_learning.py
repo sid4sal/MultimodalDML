@@ -8,49 +8,77 @@ import time
 import pretrainedmodels as ptm
 
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self):
-        self.reset()
+class Hint(torch.nn.Module):
+    def __init__(self,
+                 device,
+                 language_model='clip',
+                 use_pseudoclasses=True,
+                 pseudoclass_topk=5,
+                 sample_level=False,):
+        super(Hint, self).__init__()
 
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
+        self.language_model = language_model_select(language_model, device)
+        self.iter_count = 0
 
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
+        self.use_pseudoclasses = use_pseudoclasses
+        self.pseudoclass_topk = pseudoclass_topk
+        self.sample_level = sample_level
 
-def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
+        self.language_embeds = None
 
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
+    def precompute_language_embeds(self,
+                                   dataloader,
+                                   device,
+                                   pseudoclass_generator=None):
+        #Register a Hook
+        self.language_model.model.transformer.resblocks[5].register_forward_hook(get_features('feat_t'))
+        if self.use_pseudoclasses:
+            self.classlevel_relabels, self.sample_relabels = relabel(
+                pseudoclass_generator,
+                dataloader,
+                device,
+                topk=self.pseudoclass_topk)
 
-        res = []
-        for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
+            self.language_embeds = reembed_in_language(
+                self.language_model, self.classlevel_relabels
+                if not self.sample_level else self.sample_relabels, device)
 
-def get_embeds(language_embeds, labels):
-    if isinstance(language_embeds, dict):
-        language_embeds2 = torch.stack([
-            language_embeds[idx]
-            for idx in labels.detach().cpu().numpy()
-        ])
-        language_embeds2 = torch.mean(language_embeds2, dim=2)
-    else:
-        language_embeds2 = language_embeds[labels]
-    return language_embeds2.type(torch.float32)
+            self.language_embeds = self.language_embeds.to(device)
+            if not self.sample_level:
+                self.language_embeds = self.language_embeds.permute(1, 0, 2, 3)
+            print('Retrieved {} language embeddings!'.format(
+                self.language_embeds.shape[0] * self.language_embeds.shape[1]))
+        else:
+            self.language_embeds = reembed_dict_in_language(
+                self.language_model, dataloader.dataset.language_conversion,
+                device)
+            self.language_embeds = self.language_embeds.to(device)
+            print('Retrieved {} language embeddings!'.format(
+                self.language_embeds.shappe[0]))
+
+    def train(self, epoch,
+              dataloaders, model,
+              optimizer):
+        for idx, data in enumerate(dataloaders['training']):
+            class_labels, input_dict, sample_indices = data
+            input = input_dict['image'].to(self.device)
+
+            out_dict = model(input, device=self.device)
+            feat_s = out_dict['mid_layer']
+
+            feat_t = self.language_embeds[class_labels].type(torch.float32)
+            
+            regress_s = Regress(feat_s.size,feat_t.size).to(self.device)
+
+            f_s = regress_s(feat_s)
+
+            criterion = nn.MSELoss()
+            loss = criterion(f_s, feat_t)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
 
 # placeholder for batch features
 features = {}    
@@ -59,59 +87,16 @@ def get_features(name):
     def hook(model, input, output):
         global features
         features[name] = output.detach()
-    return hook   
-
-def train(epoch, dataloaders, model, language_embeds, optimizer, opt):
-    ##### REGISTER HOOK
-    #model.layer_blocks[1].register_forward_hook(get_features('feat_s'))
-
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    #losses = AverageMeter()
-    #top1 = AverageMeter()
-    #top5 = AverageMeter()
-    end = time.time()
-    for idx, data in enumerate(dataloaders['training']):
-        class_labels, input_dict, sample_indices = data
-        input = input_dict['image']
-        #target = class_labels
-
-        data_time.update(time.time() - end)
-        input = input.float()
-        input = input.cuda()
-        #target = target.cuda()
-
-        out_dict = model(input, device=opt.device)
-        feat_s = out_dict['mid_layer']
-        #feat_s = features['feat_s']
-
-        feat_t = get_embeds(language_embeds, class_labels)
-        
-        regress_s = Regress(512*28*28,512).cuda()
-
-        f_s = regress_s(feat_s)
-
-        criterion = nn.MSELoss()
-        loss = criterion(f_s, feat_t)
-        #acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
-        #losses.update(loss.item(), input.size(0))
-        #top1.update(acc1[0], input.size(0))
-        #top5.update(acc5[0], input.size(0))
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-    #return top1.avg, losses.avg
+    return hook 
 
 
 class Regress(nn.Module):
     """Simple Linear Regression for hints"""
-    def __init__(self, dim_in=1024, dim_out=1024):
+    def __init__(self, feat_s, feat_t):
         super(Regress, self).__init__()
+        batch1,y,x1,x2 = feat_s
+        dim_in = y*x1*x2
+        batch2,dim_out = feat_t
         self.linear = nn.Linear(dim_in, dim_out)
         self.relu = nn.ReLU(inplace=True)
 
@@ -120,32 +105,6 @@ class Regress(nn.Module):
         x = self.linear(x)
         x = self.relu(x)
         return x
-
-class ConvReg(nn.Module):
-    """Convolutional regression for FitNet"""
-    def __init__(self, s_shape, t_shape, use_relu=True):
-        super(ConvReg, self).__init__()
-        self.use_relu = use_relu
-        s_N, s_C, s_H, s_W = s_shape
-        t_N, t_C, t_H, t_W = t_shape
-        if s_H == 2 * t_H:
-            self.conv = nn.Conv2d(s_C, t_C, kernel_size=3, stride=2, padding=1)
-        elif s_H * 2 == t_H:
-            self.conv = nn.ConvTranspose2d(s_C, t_C, kernel_size=4, stride=2, padding=1)
-        elif s_H >= t_H:
-            self.conv = nn.Conv2d(s_C, t_C, kernel_size=(1+s_H-t_H, 1+s_W-t_W))
-        else:
-            raise NotImplementedError('student size {}, teacher size {}'.format(s_H, t_H))
-        self.bn = nn.BatchNorm2d(t_C)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        x = self.conv(x)
-        if self.use_relu:
-            return self.relu(self.bn(x))
-        else:
-            return self.bn(x)
-
 
 
 def language_model_select(model, device, primer='a photo of a {}'):
@@ -224,35 +183,6 @@ class BertLanguageModel(torch.nn.Module):
         language_embeds = self.model(**primed_tokens).pooler_output
         return language_embeds.type(torch.float32)
 
-
-def precompute_language_embeds(opt, language_model,
-                                   dataloader,
-                                   pseudoclass_generator=None):
-    language_model.model.transformer.resblocks[5].register_forward_hook(get_features('feat_t'))
-    if opt.language_pseudoclass:
-        classlevel_relabels, sample_relabels = relabel(
-            pseudoclass_generator,
-            dataloader,
-            opt.device,
-            topk=opt.language_pseudoclass_topk)
-
-        language_embeds = reembed_in_language(
-            language_model, classlevel_relabels,
-            opt.device)
-
-        language_embeds = language_embeds.to(opt.device)
-        language_embeds = language_embeds.permute(1, 0, 2, 3)
-        print('Retrieved {} language embeddings!'.format(
-            language_embeds.shape[0] * language_embeds.shape[1]))
-    else:
-        language_embeds = reembed_dict_in_language(
-            language_model, dataloader.dataset.language_conversion,
-            opt.device)
-        print('Retrieved {} language embeddings!'.format(
-            len(language_embeds)))
-    return language_embeds
-
-
 #############################################################################
 def adjust_text(input_text, maxlen=30):
     text = ''
@@ -284,7 +214,8 @@ def reembed_dict_in_language(language_model, label_dict, device):
             for key, language_embed in zip(unique_labs.keys(), language_embeds)
         }
 
-    return {key: unique_labs[value] for key, value in label_dict.items()}
+    d = {key: unique_labs[value] for key, value in label_dict.items()}
+    return torch.stack([value for key, value in sorted(d.items())])
 
 
 def reembed_in_language(language_model, reassigns_topk, device):

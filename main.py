@@ -235,27 +235,48 @@ if opt.language_distill_w:
     torch.cuda.empty_cache()
 
 ### ---------------------------------------------------------------
-#### Training For Hint Learning.
+#### Hint Learning.
+##### Initialize.
 if opt.hint:
-    print('\n' + termcolor.colored('-----', 'red', attrs=['bold']) + '\n')
-
-    from hint_learning import train, language_model_select, precompute_language_embeds
+    import hint_learning
     import pretrainedmodels as ptm
+    hint = hint_learning.Hint(
+        opt.device,
+        language_model=opt.language_model,
+        use_pseudoclasses=opt.language_pseudoclass,
+        pseudoclass_topk=opt.language_pseudoclass_topk)
 
-    'Import the language/teacher model.'
-    model_t = language_model_select(opt.language_model, opt.device, primer='a photo of a {}')
-    
-    language_embeds = precompute_language_embeds(opt, model_t, dataloaders['evaluation'], 
-                                            ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
-    if not isinstance(language_embeds, dict):
-        language_embeds = torch.mean(language_embeds, dim=1)
-        language_embeds = torch.mean(language_embeds, dim=2)
+    torch.cuda.empty_cache()
+    hint.precompute_language_embeds(
+        dataloaders['evaluation'], opt.device,
+        ptm.__dict__['resnet50'](pretrained='imagenet').to(opt.device))
+
+    # Adjust the Language Embeds.
+    if opt.language_pseudoclass:
+        hint.language_embeds = torch.mean(hint.language_embeds, dim=1)
+    hint.language_embeds = torch.mean(hint.language_embeds, dim=2)
+
+    del language_guide.language_model
+    torch.cuda.empty_cache()
+
+# Training.
+    print('\n' + termcolor.colored('-----', 'red', attrs=['bold']) + '\n')
 
     opt.epoch = 0
     epochs = range(opt.epoch, opt.hint_epochs)
-    for epoch in epochs:
-        train_acc, train_loss = train(epoch, dataloaders, model, language_embeds, optimizer, opt)
 
+    scaler = torch.cuda.amp.GradScaler()
+
+    torch.cuda.empty_cache()
+    for epoch in epochs:
+        # Set seeds for each epoch - this ensures reproducibility after resumption.
+        misc.set_seed(opt.n_epochs * opt.seed + epoch)
+
+        epoch_start_time = time.time()
+        # Train one epoch
+        data_iterator = tqdm(dataloaders['training'],
+                            desc='Epoch {} Training...'.format(epoch))
+        hint.train(epoch, data_iterator, model, optimizer)
 
 ### ---------------------------------------------------------------
 #### Main training.
