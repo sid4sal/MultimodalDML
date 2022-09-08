@@ -34,6 +34,7 @@ parser = par.wandb_parameters(parser)
 ### Additional, non-default parameters.
 parser = par.language_guidance_parameters(parser)
 parser = par.hint_learning_parameters(parser)
+parser = par.model_save_and_load_parameters(parser)
 opt = parser.parse_args()
 
 ### ---------------------------------------------------------------
@@ -200,6 +201,15 @@ scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
 ### Metric Computer.
 metric_computer = metrics.MetricComputer(opt.evaluation_metrics, opt)
 
+### Load the Model.
+if opt.model_load_path:
+    checkpoint = torch.load(opt.model_load_path)
+    model.load_state_dict(checkpoint['state_dict'])
+
+    if opt.continue_training:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        #old_loss = checkpoint['loss']
+
 ### ---------------------------------------------------------------
 ### Summary.
 data_text = 'Dataset:\t {}'.format(opt.dataset.upper())
@@ -276,7 +286,14 @@ if opt.hint:
         # Train one epoch
         data_iterator = tqdm(dataloaders['training'],
                             desc='Epoch {} Training...'.format(epoch))
+        _ = model.train()
         hint.train(epoch, data_iterator, model, optimizer, scaler, opt.device)
+
+        if opt.model_save_freq and epoch%10 == 9:
+            print('Saving the Model')
+            torch.save(model.state_dict(), opt.model_save_path)
+            print('Done Saving!')
+
         torch.cuda.empty_cache()
 
 ### ---------------------------------------------------------------

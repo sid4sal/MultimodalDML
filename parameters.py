@@ -251,6 +251,18 @@ def hint_learning_parameters(parser):
                         help='Flag. If set, uses Hint Learning.')
     parser.add_argument('--hint_epochs', default=100, type=int,
                         help='Number of training epochs for hint learning.')
-    parser.add_argument('--hint_layer', default=2, type=int, choices=[0, 1, 2, 3],
-                        help='Number of layer that will be used as guide and hint layers.')
+    return parser
+
+def model_save_and_load_parameters(parser):
+    """
+    Parameters for saving and loading the Model.
+    """
+    parser.add_argument('--model_save_freq', default=None, type=int,
+                        help='(Save Frequency) Number of epochs after which the trained model will be saved. [Auto Save the trained model after how many epochs.]')
+    parser.add_argument('--model_save_path', default=os.getcwd()+'/saved_model', type=str,
+                        help='Where to save the model.')
+    parser.add_argument('--model_load_path', default=None, type=str,
+                        help='Where to load the model from.')
+    parser.add_argument('--continue_training', action='store_true',
+                        help='Flag. If set, loads not only the Model state dictonary but also all the other parameters like optimizer state.')
     return parser
