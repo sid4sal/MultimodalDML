@@ -289,10 +289,11 @@ if opt.hint:
         _ = model.train()
         hint.train(epoch, data_iterator, model, optimizer, scaler, opt.device)
 
-        if opt.model_save_freq and epoch%10 == 9:
-            print('Saving the Model')
-            torch.save(model.state_dict(), opt.model_save_path)
-            print('Done Saving!')
+        if opt.model_save_freq:
+            if epoch % opt.model_save_freq == 9:
+                print('Saving the Model')
+                torch.save(model.state_dict(), opt.model_save_path)
+                print('Done Saving!')
 
         torch.cuda.empty_cache()
 
