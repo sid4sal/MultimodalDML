@@ -204,10 +204,10 @@ metric_computer = metrics.MetricComputer(opt.evaluation_metrics, opt)
 ### Load the Model.
 if opt.model_load_path:
     checkpoint = torch.load(opt.model_load_path)
-    model.load_state_dict(checkpoint['state_dict'])
+    model.load_state_dict(checkpoint['model_state_dict'])
 
     if opt.continue_training:
-        optimizer.load_state_dict(checkpoint['optimizer'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         #old_loss = checkpoint['loss']
 
 ### ---------------------------------------------------------------
@@ -292,7 +292,9 @@ if opt.hint:
         if opt.model_save_freq:
             if epoch % opt.model_save_freq == 0:
                 print('Saving the Model')
-                torch.save(model.state_dict(), opt.model_save_path)
+                torch.save({'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict()},
+                            opt.model_save_path)
                 print('Done Saving!')
 
         torch.cuda.empty_cache()
