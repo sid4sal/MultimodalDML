@@ -256,6 +256,10 @@ if opt.hint:
         use_pseudoclasses=opt.language_pseudoclass,
         pseudoclass_topk=opt.language_pseudoclass_topk)
 
+    # Set the Loss function.
+    hint.set_criterion(opt.hint_loss)
+
+    # Compute the Language Enbeds.
     torch.cuda.empty_cache()
     hint.precompute_language_embeds(
         dataloaders['evaluation'], opt.device,

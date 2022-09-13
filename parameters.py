@@ -251,6 +251,8 @@ def hint_learning_parameters(parser):
                         help='Flag. If set, uses Hint Learning.')
     parser.add_argument('--hint_epochs', default=100, type=int,
                         help='Number of training epochs for hint learning.')
+    parser.add_argument('--hint_loss', default='mse', type=str,
+                        help='Loss to use for Hint training. eg. "mse", "kld", "ce"')
     return parser
 
 def model_save_and_load_parameters(parser):

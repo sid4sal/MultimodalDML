@@ -25,6 +25,7 @@ class Hint(torch.nn.Module):
         self.sample_level = sample_level
 
         self.language_embeds = None
+        self.criterion = None
 
     def precompute_language_embeds(self,
                                    dataloader,
@@ -56,6 +57,17 @@ class Hint(torch.nn.Module):
             print('Retrieved {} language embeddings!'.format(
                 self.language_embeds.shape[0]))
 
+    def set_criterion(self, loss):
+        if loss not in ['mse', 'ce', 'kld']:
+            raise NotImplementedError(
+                'Loss {} not available!'.format(loss))
+        if loss == 'mse':
+            self.criterion = nn.MSELoss()
+        if loss == 'ce':
+            self.criterion = nn.CrossEntropyLoss()
+        if loss == 'kld':
+            self.criterion = nn.KLDivLoss()
+
     def train(self, epoch,
               data_iterator, model,
               optimizer, scaler, device):
@@ -73,8 +85,8 @@ class Hint(torch.nn.Module):
 
             f_s = regress_s(feat_s)
 
-            criterion = nn.MSELoss()
-            loss = criterion(f_s, feat_t)
+            #criterion = nn.MSELoss()
+            loss = self.criterion(f_s, feat_t)
 
             data_iterator.set_postfix_str('Hint Loss: {0:.4f}'.format(loss))
 
