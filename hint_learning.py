@@ -26,6 +26,7 @@ class Hint(torch.nn.Module):
 
         self.language_embeds = None
         self.criterion = None
+        self.loss = None
 
     def precompute_language_embeds(self,
                                    dataloader,
@@ -62,10 +63,13 @@ class Hint(torch.nn.Module):
             raise NotImplementedError(
                 'Loss {} not available!'.format(loss))
         if loss == 'mse':
+            self.loss = 'mse'
             self.criterion = nn.MSELoss()
         if loss == 'ce':
+            self.loss = 'ce'
             self.criterion = nn.CrossEntropyLoss()
         if loss == 'kld':
+            self.loss = 'kld'
             self.criterion = nn.KLDivLoss()
 
     def train(self, epoch,
@@ -85,7 +89,8 @@ class Hint(torch.nn.Module):
 
             f_s = regress_s(feat_s)
 
-            #criterion = nn.MSELoss()
+            if self.loss == 'ce':
+                feat_t = nn.functional.softmax(feat_t)
             loss = self.criterion(f_s, feat_t)
 
             data_iterator.set_postfix_str('Hint Loss: {0:.4f}'.format(loss))
