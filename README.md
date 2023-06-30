@@ -1,6 +1,6 @@
 # Language Guidance for Vision-based Deep Metric Learning
-### CVPR 2022 ___Oral___
-#### ___Contact___: Karsten Roth (karsten.rh1@gmail.com)
+
+_Note:_ This repository is build on top of preceding work [here](https://github.com/ExplainableML/LanguageGuidance_for_DML).
 
 ---
 #### Table of Contents:
@@ -19,8 +19,6 @@ The goal of the proposed approach is to counteract the high degree of performanc
 
 In particular, as Deep Metric Learning pipelines heavily rely on ImageNet pretraining,
 we showcase that the resulting access to pseudolabelling allows for the integration of language semantics into the learning process of visual representations and in turn significant improvements in performance.
-
-_Note:_ This repository is build on top of preceding work [here](https://github.com/Confusezius/Revisiting_Deep_Metric_Learning_PyTorch).
 
 ---
 ## Requirements
